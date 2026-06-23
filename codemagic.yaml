@@ -30,8 +30,11 @@ workflows:
 
     environment:
       ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.static-vision.app
+        # Use the distribution certificate you already uploaded to Codemagic
+        # (it holds the private key). The matching App Store profile is created
+        # below via the API key, since none exists for this bundle id yet.
+        certificates:
+          - codemagicFlutter
       vars:
         XCODE_PROJECT: "StaticVision.xcodeproj"
         XCODE_SCHEME: "StaticVision"
@@ -51,7 +54,17 @@ workflows:
           echo "CFBundleVersion set to ${BUILD_NUMBER}"
 
       - name: Set up code signing
-        script: xcode-project use-profiles
+        script: |
+          set -e
+          # Load the uploaded distribution certificate into the build keychain.
+          keychain initialize
+          keychain add-certificates
+          # Create (or fetch) the App Store provisioning profile for this bundle id
+          # using the App Store Connect API key, then apply it to the Xcode project.
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+          xcode-project use-profiles
 
       - name: Build IPA
         script: |
