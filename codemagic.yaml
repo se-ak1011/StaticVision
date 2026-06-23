@@ -1,14 +1,16 @@
-# Codemagic CI/CD — StaticVision
-# Builds the iOS app and uploads it to TestFlight for internal testing.
+# Codemagic CI/CD — StaticVision  →  TestFlight
 #
-# ── One-time setup in the Codemagic UI ──
-#   1. App Store Connect API key integration named `codemagicFlutter`.
-#   2. Add app-level environment variables:
-#      SUPABASE_URL, SUPABASE_ANON_KEY.
-#      App Store Connect credentials are expected from the
-#      `codemagicFlutter` integration.
-#   3. Register the bundle id `com.static-vision.app` and create its app record in
-#      App Store Connect.
+# Code signing mirrors the working PAI setup:
+#   • integration `codemagicFlutter`  → App Store Connect API credentials
+#   • variable group `ios_signing`     → the distribution certificate's PRIVATE KEY
+#     (CERTIFICATE_PRIVATE_KEY) + ASC creds, shared across the team.
+#
+# The private key is the crucial bit: `fetch-signing-files` downloads the
+# certificate from App Store Connect, but that copy has no private key, so without
+# the `ios_signing` group `keychain add-certificates` yields 0 valid identities
+# (the "0 values" failure). With the group present, signing works.
+#
+# Supabase URL/key are baked into AppConfig.swift, so no Supabase vars are needed here.
 
 workflows:
   ios-testflight:
@@ -20,9 +22,8 @@ workflows:
       app_store_connect: codemagicFlutter
 
     environment:
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.static-vision.app
+      groups:
+        - ios_signing            # CERTIFICATE_PRIVATE_KEY (+ password) + ASC creds — REQUIRED for signing
       vars:
         XCODE_PROJECT: "StaticVision.xcodeproj"
         XCODE_SCHEME: "StaticVision"
@@ -30,72 +31,32 @@ workflows:
       xcode: latest
 
     scripts:
-      - name: Normalize bundle identifier variables
-        script: |
-          # BUNDLE_ID is defined in environment.vars above.
-          if [[ -z "${BUNDLE_ID:-}" ]]; then
-            echo "Missing required workflow variable: BUNDLE_ID"
-            exit 1
-          fi
-          # Persist to CM_ENV so the value is visible in every subsequent step.
-          # Plain `export` only affects the current subshell and does not carry over.
-          echo "IOS_BUNDLE_IDENTIFIER=$BUNDLE_ID" >> $CM_ENV
-          echo "PRODUCT_BUNDLE_IDENTIFIER=$BUNDLE_ID" >> $CM_ENV
-          echo "Using bundle id: $BUNDLE_ID"
-
       - name: Set unique build number
         script: |
+          set -e
           # Unix timestamp => always higher than the last upload, so App Store Connect
           # never rejects a build for a duplicate CFBundleVersion.
           BUILD_NUM=$(date +%s)
-          echo "STATIC_VISION_BUILD_NUMBER=$BUILD_NUM" >> $CM_ENV
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUM" "StaticVision/Info.plist"
           echo "CFBundleVersion set to $BUILD_NUM"
 
-      - name: Validate App Store Connect secrets
-        script: |
-          export APP_STORE_CONNECT_KEY_IDENTIFIER="${APP_STORE_CONNECT_KEY_IDENTIFIER:-${APP_STORE_CONNECT_KEY_ID:-}}"
-          REQUIRED_VARS=(
-            APP_STORE_CONNECT_KEY_IDENTIFIER
-            APP_STORE_CONNECT_ISSUER_ID
-            APP_STORE_CONNECT_PRIVATE_KEY
-            SUPABASE_URL
-            SUPABASE_ANON_KEY
-            BUNDLE_ID
-          )
-          for VAR_NAME in "${REQUIRED_VARS[@]}"; do
-            if [[ -z "${!VAR_NAME:-}" ]]; then
-              echo "Missing required Codemagic secret: $VAR_NAME"
-              exit 1
-            fi
-          done
-          echo "App Store Connect secrets detected."
-
       - name: Set up code signing
         script: |
-          export APP_STORE_CONNECT_KEY_IDENTIFIER="${APP_STORE_CONNECT_KEY_IDENTIFIER:-${APP_STORE_CONNECT_KEY_ID:-}}"
+          set -e
           keychain initialize
+          # Fetch (or create) the distribution certificate + App Store profile for the
+          # bundle id. CERTIFICATE_PRIVATE_KEY (from the ios_signing group) supplies the
+          # private key so a usable signing identity is produced.
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
-            --create \
-            --certificate-key-password "${CERTIFICATE_PRIVATE_KEY_PASSWORD:-}"
+            --create
           keychain add-certificates
 
-          echo "== Certificates in keychain after setup =="
+          echo "== Code signing identities =="
           security find-identity -v -p codesigning
-          # Count certificate lines (each starts with a sequence number like "  1)")
           CERT_COUNT=$(security find-identity -v -p codesigning 2>&1 | grep -cE '^ *[0-9]+\)' || true)
-          if [[ "$CERT_COUNT" -eq 0 ]]; then
-            echo "ERROR: 0 valid code signing identities after setup. Check the codemagicFlutter integration and that your Apple Developer account has a Distribution certificate."
-            exit 1
-          fi
-
-          echo "== Provisioning profiles installed =="
-          PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
-          PROFILE_COUNT=$(find "$PROFILE_DIR" -name "*.mobileprovision" -maxdepth 1 2>/dev/null | wc -l | tr -d ' ')
-          ls -1 "$PROFILE_DIR" 2>/dev/null || echo "No profiles directory found"
-          if [[ "$PROFILE_COUNT" -eq 0 ]]; then
-            echo "ERROR: 0 provisioning profiles found after setup. Ensure bundle id $BUNDLE_ID is registered in App Store Connect and the codemagicFlutter integration has App Manager role."
+          if [ "$CERT_COUNT" -eq 0 ]; then
+            echo "ERROR: 0 valid signing identities. The 'ios_signing' variable group must define CERTIFICATE_PRIVATE_KEY (the distribution cert's private key)."
             exit 1
           fi
 
@@ -103,15 +64,10 @@ workflows:
 
       - name: Build IPA
         script: |
-          # SUPABASE_URL and SUPABASE_ANON_KEY are passed as Xcode build settings so
-          # the $(SUPABASE_URL) / $(SUPABASE_ANON_KEY) entries in Info.plist are
-          # expanded at build time. SUPABASE_ANON_KEY is a public client key (safe to
-          # ship in the binary; already baked-in as fallback in AppConfig.swift).
           xcode-project build-ipa \
             --project "$XCODE_PROJECT" \
             --scheme "$XCODE_SCHEME" \
-            --config Release \
-            --xcargs "SUPABASE_URL=$SUPABASE_URL SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY"
+            --config Release
 
     artifacts:
       - build/ios/ipa/*.ipa
