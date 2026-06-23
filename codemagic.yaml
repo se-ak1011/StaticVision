@@ -31,6 +31,10 @@ workflows:
     scripts:
       - name: Normalize bundle identifier variables
         script: |
+          if [[ -z "${BUNDLE_ID:-}" ]]; then
+            echo "Missing required Codemagic variable: BUNDLE_ID"
+            exit 1
+          fi
           # Some Codemagic tooling and pre-build defaults reference IOS_BUNDLE_IDENTIFIER;
           # keep it aligned to the workflow's canonical BUNDLE_ID.
           export IOS_BUNDLE_IDENTIFIER="$BUNDLE_ID"
