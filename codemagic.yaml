@@ -29,12 +29,9 @@ workflows:
       app_store_connect: codemagicFlutter   # App Store Connect API key (Key ID XNGK7F7SXJ)
 
     environment:
-      ios_signing:
-        # Use the distribution certificate you already uploaded to Codemagic
-        # (it holds the private key). The matching App Store profile is created
-        # below via the API key, since none exists for this bundle id yet.
-        certificates:
-          - codemagicFlutter
+      # No `ios_signing` block: signing is handled explicitly in the script below
+      # via the App Store Connect API key, which creates the certificate and the
+      # App Store profile for this bundle id (none exists yet).
       vars:
         XCODE_PROJECT: "StaticVision.xcodeproj"
         XCODE_SCHEME: "StaticVision"
@@ -56,14 +53,16 @@ workflows:
       - name: Set up code signing
         script: |
           set -e
-          # Load the uploaded distribution certificate into the build keychain.
           keychain initialize
-          keychain add-certificates
-          # Create (or fetch) the App Store provisioning profile for this bundle id
-          # using the App Store Connect API key, then apply it to the Xcode project.
+          # Fetch (or create) the distribution certificate and an App Store
+          # provisioning profile for this bundle id, using the App Store Connect
+          # API key from the integration above.
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
             --create
+          # Import the fetched certificate(s) into the build keychain and apply
+          # the profile to the Xcode project.
+          keychain add-certificates
           xcode-project use-profiles
 
       - name: Build IPA
