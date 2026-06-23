@@ -1,23 +1,12 @@
 # Codemagic CI/CD — StaticVision
 # Builds the iOS app and uploads it to TestFlight for internal testing.
 #
-# Signing is AUTOMATIC, matching the proven setup from the PAI app: the declarative
-# `ios_signing` block + the shared `ios_signing` variable group (which holds the
-# distribution certificate's private key and App Store Connect credentials). Codemagic
-# uses these to fetch/create the App Store profile for com.static-vision.app and apply
-# it. The "Codemagicc" profile (bound to com.pall.app) is not used — profiles are
-# tied to a single bundle id.
-#
-# ── One-time setup in the Codemagic UI (already done for your other apps) ──
+# ── One-time setup in the Codemagic UI ──
 #   1. App Store Connect API key integration named `codemagicFlutter`.
-#   2. Variable group `ios_signing` containing the signing credentials/cert key
-#      (shared across the team, so it's reused here as-is).
+#   2. Variable group `ios_signing` containing the distribution certificate private key
+#      and App Store Connect credentials.
 #   3. Register the bundle id `com.static-vision.app` and create its app record in
 #      App Store Connect.
-#   4. (Optional) Variable group `staticvision_secrets` with SUPABASE_URL and
-#      SUPABASE_ANON_KEY — only needed to override the values baked into
-#      AppConfig.swift. The OpenAI key is NOT here; it lives server-side in the
-#      openai-proxy Edge Function.
 
 workflows:
   ios-testflight:
@@ -26,36 +15,86 @@ workflows:
     max_build_duration: 60
 
     integrations:
-      app_store_connect: codemagicFlutter   # App Store Connect API key (Key ID XNGK7F7SXJ)
+      app_store_connect: codemagicFlutter
 
     environment:
       ios_signing:
-        distribution_type: development
+        distribution_type: app_store
         bundle_identifier: com.static-vision.app
       groups:
-        - ios_signing            # shared group: distribution cert private key + ASC creds (same as PAI)
+        - ios_signing
       vars:
         XCODE_PROJECT: "StaticVision.xcodeproj"
         XCODE_SCHEME: "StaticVision"
         BUNDLE_ID: "com.static-vision.app"
       xcode: latest
-      # Supabase URL/key are baked into AppConfig.swift. To override per-build,
-      # add a group (e.g. `staticvision_secrets`) and inject into Info.plist.
 
     scripts:
-      - name: Set build number
+      - name: Print iOS signing assets detected by Codemagic
         script: |
-          set -e
-          # Codemagic auto-increments BUILD_NUMBER per workflow run, guaranteeing a
-          # unique, increasing CFBundleVersion for every TestFlight upload.
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${BUILD_NUMBER}" "StaticVision/Info.plist"
-          echo "CFBundleVersion set to ${BUILD_NUMBER}"
+          echo "== Code signing identities (name + SHA-1) =="
+          security find-identity -v -p codesigning || true
+
+          echo
+          echo "== Provisioning profiles available =="
+          PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          if [[ -d "$PROFILE_DIR" ]]; then
+            find "$PROFILE_DIR" -name "*.mobileprovision" -maxdepth 1 | while read -r profile; do
+              echo
+              echo "Profile file: $(basename "$profile")"
+              security cms -D -i "$profile" > /tmp/codemagic_profile.plist
+              /usr/libexec/PlistBuddy -c "Print :Name" /tmp/codemagic_profile.plist || true
+              /usr/libexec/PlistBuddy -c "Print :UUID" /tmp/codemagic_profile.plist || true
+              /usr/libexec/PlistBuddy -c "Print :Entitlements:application-identifier" /tmp/codemagic_profile.plist || true
+            done
+          else
+            echo "No provisioning profiles directory found at $PROFILE_DIR"
+          fi
+
+      - name: Set unique build number
+        script: |
+          # Unix timestamp => always higher than the last upload, so App Store Connect
+          # never rejects a build for a duplicate CFBundleVersion.
+          BUILD_NUM=$(date +%s)
+          echo "STATIC_VISION_BUILD_NUMBER=$BUILD_NUM" >> $CM_ENV
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUM" "StaticVision/Info.plist"
+          echo "CFBundleVersion set to $BUILD_NUM"
+
+      - name: Validate App Store Connect secrets
+        script: |
+          export APP_STORE_CONNECT_KEY_IDENTIFIER="${APP_STORE_CONNECT_KEY_IDENTIFIER:-${APP_STORE_CONNECT_KEY_ID:-}}"
+          REQUIRED_VARS=(
+            APP_STORE_CONNECT_KEY_IDENTIFIER
+            APP_STORE_CONNECT_ISSUER_ID
+            APP_STORE_CONNECT_PRIVATE_KEY
+            BUNDLE_ID
+          )
+          for VAR_NAME in "${REQUIRED_VARS[@]}"; do
+            if [[ -z "${!VAR_NAME:-}" ]]; then
+              echo "Missing required Codemagic secret: $VAR_NAME"
+              exit 1
+            fi
+          done
+          echo "App Store Connect secrets detected."
 
       - name: Set up code signing
-        # The declarative `ios_signing` block above makes Codemagic fetch/create the
-        # certificate and App Store profile during environment setup; this applies
-        # them to the Xcode project.
-        script: xcode-project use-profiles
+        script: |
+          export APP_STORE_CONNECT_KEY_IDENTIFIER="${APP_STORE_CONNECT_KEY_IDENTIFIER:-${APP_STORE_CONNECT_KEY_ID:-}}"
+          keychain initialize
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create \
+            --certificate-key-password "${CERTIFICATE_PRIVATE_KEY_PASSWORD:-}" || true
+          keychain add-certificates
+
+          echo "== Certificates in keychain after setup =="
+          security find-identity -v -p codesigning || true
+
+          echo "== Provisioning profiles installed =="
+          PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          ls -1 "$PROFILE_DIR" 2>/dev/null || echo "No profiles directory found"
+
+          xcode-project use-profiles
 
       - name: Build IPA
         script: |
@@ -73,7 +112,3 @@ workflows:
       app_store_connect:
         auth: integration
         submit_to_testflight: true
-        # Internal testers receive processed builds automatically.
-        # To also push to a named group, uncomment and match the group in App Store Connect:
-        # beta_groups:
-        #   - Internal Testers
