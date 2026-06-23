@@ -1,4 +1,5 @@
 import Foundation
+import Security
 
 // MARK: - SupabaseService
 // A lightweight REST wrapper around the Supabase PostgREST, Auth and
@@ -15,15 +16,19 @@ final class SupabaseService: ObservableObject {
     @Published var currentUser: SupabaseUser?
     @Published var session: SupabaseSession?
 
+    // NOTE: the models declare explicit snake_case `CodingKeys` for the columns that
+    // need them, so we must NOT also apply `convert*SnakeCase` strategies — doing both
+    // double-transforms the keys and breaks decoding. Nested `Room`/`FurnitureItem`
+    // live inside a `jsonb` blob and round-trip symmetrically with their default keys.
     private let decoder: JSONDecoder = {
         let d = JSONDecoder()
-        d.keyDecodingStrategy = .convertFromSnakeCase
         let fmt = ISO8601DateFormatter()
         fmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         d.dateDecodingStrategy = .custom { decoder in
             let c = try decoder.singleValueContainer()
             let s = try c.decode(String.self)
             if let date = fmt.date(from: s) { return date }
+            if let date = ISO8601DateFormatter().date(from: s) { return date }
             throw DecodingError.dataCorruptedError(in: c, debugDescription: "Bad date: \(s)")
         }
         return d
@@ -31,10 +36,28 @@ final class SupabaseService: ObservableObject {
 
     private let encoder: JSONEncoder = {
         let e = JSONEncoder()
-        e.keyEncodingStrategy = .convertToSnakeCase
         e.dateEncodingStrategy = .iso8601
         return e
     }()
+
+    /// Auth payloads (Supabase GoTrue) use snake_case keys that are already spelled
+    /// out in the models' `CodingKeys`, so this decoder must NOT also apply
+    /// `convertFromSnakeCase` (that would double-transform and fail to match).
+    private let authDecoder: JSONDecoder = {
+        let d = JSONDecoder()
+        let fmt = ISO8601DateFormatter()
+        fmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        d.dateDecodingStrategy = .custom { decoder in
+            let c = try decoder.singleValueContainer()
+            let s = try c.decode(String.self)
+            if let date = fmt.date(from: s) { return date }
+            if let date = ISO8601DateFormatter().date(from: s) { return date }
+            throw DecodingError.dataCorruptedError(in: c, debugDescription: "Bad date: \(s)")
+        }
+        return d
+    }()
+
+    private let keychainAccount = "com.static-vision.session"
 
     // MARK: – Base URLs
     private var authURL: URL { URL(string: "\(AppConfig.supabaseURL)/auth/v1")! }
@@ -58,11 +81,8 @@ final class SupabaseService: ObservableObject {
     func signUp(email: String, password: String) async throws -> SupabaseUser {
         let body = ["email": email, "password": password]
         let data = try await post(url: authURL.appendingPathComponent("signup"), body: body)
-        let response = try decoder.decode(AuthResponse.self, from: data)
-        await MainActor.run {
-            self.session = response.session
-            self.currentUser = response.user
-        }
+        let response = try authDecoder.decode(AuthResponse.self, from: data)
+        await apply(session: response.session, user: response.user)
         return response.user
     }
 
@@ -71,11 +91,8 @@ final class SupabaseService: ObservableObject {
         var url = authURL.appendingPathComponent("token")
         url = url.appending(queryItems: [URLQueryItem(name: "grant_type", value: "password")])
         let data = try await post(url: url, body: body)
-        let response = try decoder.decode(AuthResponse.self, from: data)
-        await MainActor.run {
-            self.session = response.session
-            self.currentUser = response.user
-        }
+        let response = try authDecoder.decode(AuthResponse.self, from: data)
+        await apply(session: response.session, user: response.user)
         return response.user
     }
 
@@ -85,10 +102,57 @@ final class SupabaseService: ObservableObject {
             self.session = nil
             self.currentUser = nil
         }
+        Keychain.delete(account: keychainAccount)
     }
 
+    /// Restores a persisted session from the Keychain and refreshes its tokens so
+    /// the user stays signed in across app launches.
     func restoreSession() async {
-        // In production use Keychain; for now session is in-memory only.
+        guard
+            let data = Keychain.load(account: keychainAccount),
+            let stored = try? JSONDecoder().decode(StoredSession.self, from: data)
+        else { return }
+
+        // Optimistically restore, then refresh in the background.
+        await MainActor.run {
+            self.session = stored.session
+            self.currentUser = stored.user
+        }
+
+        guard let refreshToken = stored.session.refreshToken else { return }
+        do {
+            try await refreshSession(refreshToken: refreshToken)
+        } catch {
+            // Refresh token expired or revoked → force re-login.
+            await MainActor.run {
+                self.session = nil
+                self.currentUser = nil
+            }
+            Keychain.delete(account: keychainAccount)
+        }
+    }
+
+    private func refreshSession(refreshToken: String) async throws {
+        var url = authURL.appendingPathComponent("token")
+        url = url.appending(queryItems: [URLQueryItem(name: "grant_type", value: "refresh_token")])
+        let bodyData = try JSONSerialization.data(withJSONObject: ["refresh_token": refreshToken])
+        let data = try await post(url: url, bodyData: bodyData)
+        let response = try authDecoder.decode(AuthResponse.self, from: data)
+        await apply(session: response.session, user: response.user)
+    }
+
+    /// Updates the published session/user and persists them to the Keychain.
+    private func apply(session newSession: SupabaseSession?, user: SupabaseUser) async {
+        await MainActor.run {
+            self.session = newSession
+            self.currentUser = user
+        }
+        if let newSession {
+            let stored = StoredSession(session: newSession, user: user)
+            if let data = try? JSONEncoder().encode(stored) {
+                Keychain.save(data, account: keychainAccount)
+            }
+        }
     }
 
     // MARK: – Database
@@ -171,8 +235,8 @@ final class SupabaseService: ObservableObject {
 
     // MARK: – Storage
 
-    /// Uploads `data` to the given `bucket` at `path` and returns the public URL.
-    func uploadFile(bucket: String, path: String, data fileData: Data, contentType: String) async throws -> URL {
+    /// Uploads `data` to the given (private) `bucket` at `path`.
+    func uploadFile(bucket: String, path: String, data fileData: Data, contentType: String) async throws {
         let url = storageURL
             .appendingPathComponent("object")
             .appendingPathComponent(bucket)
@@ -188,10 +252,39 @@ final class SupabaseService: ObservableObject {
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw AppError.serverError("Upload failed")
         }
-        return storageURL
-            .appendingPathComponent("object/public")
+    }
+
+    /// Creates a time-limited signed URL for an object in a **private** bucket.
+    /// The buckets are private, so plain `/object/public/...` URLs do not work.
+    func createSignedURL(bucket: String, path: String, expiresIn seconds: Int = 3600) async throws -> URL {
+        let url = storageURL
+            .appendingPathComponent("object/sign")
             .appendingPathComponent(bucket)
             .appendingPathComponent(path)
+        let bodyData = try JSONSerialization.data(withJSONObject: ["expiresIn": seconds])
+        let data = try await post(url: url, bodyData: bodyData)
+
+        guard
+            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let signed = json["signedURL"] as? String ?? json["signedUrl"] as? String
+        else {
+            throw AppError.parsingError("No signedURL in storage response")
+        }
+        // `signedURL` is a path relative to the storage endpoint, e.g.
+        // "/object/sign/bucket/path?token=...".
+        let relative = signed.hasPrefix("/") ? String(signed.dropFirst()) : signed
+        guard let full = URL(string: "\(AppConfig.supabaseURL)/storage/v1/\(relative)") else {
+            throw AppError.serverError("Invalid signed URL")
+        }
+        return full
+    }
+
+    /// Downloads the bytes of a private media object via a signed URL.
+    func downloadMedia(_ media: ProjectMedia) async throws -> Data {
+        let signed = try await createSignedURL(bucket: AppConfig.mediaBucket, path: media.storagePath)
+        let (data, response) = try await URLSession.shared.data(from: signed)
+        try validate(response)
+        return data
     }
 
     // MARK: – Private HTTP helpers
@@ -250,9 +343,39 @@ final class SupabaseService: ObservableObject {
 
 // MARK: - Auth response models
 
-struct AuthResponse: Codable {
+/// Supabase GoTrue returns the session tokens at the top level of the JSON
+/// (alongside `user`), not nested under a `session` key — so we assemble the
+/// `SupabaseSession` manually from those fields.
+struct AuthResponse: Decodable {
     let user: SupabaseUser
     let session: SupabaseSession?
+
+    private enum CodingKeys: String, CodingKey {
+        case user
+        case accessToken  = "access_token"
+        case refreshToken = "refresh_token"
+        case expiresIn    = "expires_in"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.user = try c.decode(SupabaseUser.self, forKey: .user)
+        if let accessToken = try c.decodeIfPresent(String.self, forKey: .accessToken) {
+            self.session = SupabaseSession(
+                accessToken: accessToken,
+                refreshToken: try c.decodeIfPresent(String.self, forKey: .refreshToken),
+                expiresIn: try c.decodeIfPresent(Int.self, forKey: .expiresIn)
+            )
+        } else {
+            self.session = nil
+        }
+    }
+}
+
+/// Container persisted to the Keychain so the user stays signed in across launches.
+struct StoredSession: Codable {
+    let session: SupabaseSession
+    let user: SupabaseUser
 }
 
 struct SupabaseUser: Codable, Identifiable {
@@ -303,5 +426,54 @@ private extension URL {
         guard var comps = URLComponents(url: self, resolvingAgainstBaseURL: true) else { return self }
         comps.queryItems = (comps.queryItems ?? []) + queryItems
         return comps.url ?? self
+    }
+}
+
+// MARK: - Keychain
+
+/// Minimal wrapper around the Keychain for storing the session securely.
+enum Keychain {
+    private static let service = "com.static-vision.app"
+
+    static func save(_ data: Data, account: String) {
+        let query: [String: Any] = [
+            kSecClass as String:       kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+        ]
+        let attributes: [String: Any] = [
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+        ]
+        // Update if it already exists, otherwise add.
+        let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        if status == errSecItemNotFound {
+            var addQuery = query
+            addQuery.merge(attributes) { _, new in new }
+            SecItemAdd(addQuery as CFDictionary, nil)
+        }
+    }
+
+    static func load(account: String) -> Data? {
+        let query: [String: Any] = [
+            kSecClass as String:       kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String:  true,
+            kSecMatchLimit as String:  kSecMatchLimitOne,
+        ]
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess else { return nil }
+        return result as? Data
+    }
+
+    static func delete(account: String) {
+        let query: [String: Any] = [
+            kSecClass as String:       kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+        ]
+        SecItemDelete(query as CFDictionary)
     }
 }

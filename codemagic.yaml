@@ -1,0 +1,87 @@
+# Codemagic CI/CD — StaticVision
+# Builds the iOS app and uploads it to TestFlight for internal testing.
+#
+# Signing is AUTOMATIC: Codemagic uses your App Store Connect API key to fetch
+# (or create) the distribution certificate and an App Store provisioning profile
+# for com.static-vision.app, then applies them to the project. Nothing needs to be
+# uploaded manually — and the existing "Codemagicc" profile (bound to com.pall.app)
+# is not used, since profiles are tied to a single bundle id.
+#
+# ── One-time setup in the Codemagic UI ──
+#   1. App Store Connect API key (your Apple "login"): Teams ▸ Integrations ▸
+#      App Store Connect. Set `integrations.app_store_connect` below to its name.
+#      (If you already use one for your other TestFlight apps, reuse it.)
+#   2. Register the bundle id `com.static-vision.app` and create its app record in
+#      App Store Connect. (With the API key, Codemagic can register the App ID
+#      automatically on the first build.)
+#   3. (Optional) Encrypted variable group `staticvision_secrets` with SUPABASE_URL
+#      and SUPABASE_ANON_KEY — only needed to override the values baked into
+#      AppConfig.swift. The OpenAI key is NOT here; it lives server-side in the
+#      openai-proxy Edge Function.
+
+workflows:
+  ios-testflight:
+    name: StaticVision iOS – TestFlight
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+
+    integrations:
+      app_store_connect: codemagicFlutter   # App Store Connect API key (Key ID XNGK7F7SXJ)
+
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.static-vision.app
+      groups:
+        - staticvision_secrets                    # optional: SUPABASE_URL, SUPABASE_ANON_KEY
+      vars:
+        XCODE_PROJECT: "StaticVision.xcodeproj"
+        XCODE_SCHEME: "StaticVision"
+        BUNDLE_ID: "com.static-vision.app"
+      xcode: latest
+
+    scripts:
+      - name: Inject Supabase config into Info.plist
+        script: |
+          set -e
+          PLIST="StaticVision/Info.plist"
+          # Only override when the secrets group provides values; otherwise the
+          # defaults baked into AppConfig.swift are used.
+          if [ -n "${SUPABASE_URL}" ]; then
+            /usr/libexec/PlistBuddy -c "Set :SUPABASE_URL ${SUPABASE_URL}" "$PLIST"
+          fi
+          if [ -n "${SUPABASE_ANON_KEY}" ]; then
+            /usr/libexec/PlistBuddy -c "Set :SUPABASE_ANON_KEY ${SUPABASE_ANON_KEY}" "$PLIST"
+          fi
+
+      - name: Set build number
+        script: |
+          set -e
+          # Codemagic auto-increments BUILD_NUMBER per workflow run, guaranteeing a
+          # unique, increasing CFBundleVersion for every TestFlight upload.
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${BUILD_NUMBER}" "StaticVision/Info.plist"
+          echo "CFBundleVersion set to ${BUILD_NUMBER}"
+
+      - name: Set up code signing
+        script: xcode-project use-profiles
+
+      - name: Build IPA
+        script: |
+          xcode-project build-ipa \
+            --project "$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME" \
+            --config Release
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        # Internal testers receive processed builds automatically.
+        # To also push to a named group, uncomment and match the group in App Store Connect:
+        # beta_groups:
+        #   - Internal Testers

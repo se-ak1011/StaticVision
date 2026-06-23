@@ -53,8 +53,4 @@ struct ProjectMedia: Identifiable, Codable {
         case thumbnailPath = "thumbnail_path"
         case createdAt    = "created_at"
     }
-
-    var storageURL: URL? {
-        URL(string: "\(AppConfig.supabaseURL)/storage/v1/object/public/\(AppConfig.mediaBucket)/\(storagePath)")
-    }
 }
