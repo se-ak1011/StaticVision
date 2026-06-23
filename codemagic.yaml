@@ -3,8 +3,10 @@
 #
 # ── One-time setup in the Codemagic UI ──
 #   1. App Store Connect API key integration named `codemagicFlutter`.
-#   2. Variable group `ios_signing` containing the distribution certificate private key
-#      and App Store Connect credentials.
+#   2. Add app-level environment variables:
+#      SUPABASE_URL, SUPABASE_ANON_KEY, APP_STORE_CONNECT_ISSUER_ID,
+#      APP_STORE_CONNECT_KEY_IDENTIFIER (or APP_STORE_CONNECT_KEY_ID),
+#      APP_STORE_CONNECT_PRIVATE_KEY.
 #   3. Register the bundle id `com.static-vision.app` and create its app record in
 #      App Store Connect.
 
@@ -21,15 +23,20 @@ workflows:
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.static-vision.app
-      groups:
-        - ios_signing
       vars:
         XCODE_PROJECT: "StaticVision.xcodeproj"
         XCODE_SCHEME: "StaticVision"
         BUNDLE_ID: "com.static-vision.app"
+        IOS_BUNDLE_IDENTIFIER: "com.static-vision.app"
       xcode: latest
 
     scripts:
+      - name: Normalize bundle identifier variables
+        script: |
+          export IOS_BUNDLE_IDENTIFIER="$BUNDLE_ID"
+          export PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID"
+          echo "Using bundle id: $BUNDLE_ID"
+
       - name: Print iOS signing assets detected by Codemagic
         script: |
           echo "== Code signing identities (name + SHA-1) =="
@@ -67,6 +74,8 @@ workflows:
             APP_STORE_CONNECT_KEY_IDENTIFIER
             APP_STORE_CONNECT_ISSUER_ID
             APP_STORE_CONNECT_PRIVATE_KEY
+            SUPABASE_URL
+            SUPABASE_ANON_KEY
             BUNDLE_ID
           )
           for VAR_NAME in "${REQUIRED_VARS[@]}"; do
