@@ -37,32 +37,11 @@ workflows:
             echo "Missing required workflow variable: BUNDLE_ID"
             exit 1
           fi
-          # The build machine initializes IOS_BUNDLE_IDENTIFIER from app/user env vars
-          # before custom scripts run; force it to this workflow's canonical BUNDLE_ID.
-          export IOS_BUNDLE_IDENTIFIER="$BUNDLE_ID"
-          export PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID"
+          # Persist to CM_ENV so the value is visible in every subsequent step.
+          # Plain `export` only affects the current subshell and does not carry over.
+          echo "IOS_BUNDLE_IDENTIFIER=$BUNDLE_ID" >> $CM_ENV
+          echo "PRODUCT_BUNDLE_IDENTIFIER=$BUNDLE_ID" >> $CM_ENV
           echo "Using bundle id: $BUNDLE_ID"
-
-      - name: Print iOS signing assets detected by Codemagic
-        script: |
-          echo "== Code signing identities (name + SHA-1) =="
-          security find-identity -v -p codesigning || true
-
-          echo
-          echo "== Provisioning profiles available =="
-          PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
-          if [[ -d "$PROFILE_DIR" ]]; then
-            find "$PROFILE_DIR" -name "*.mobileprovision" -maxdepth 1 | while read -r profile; do
-              echo
-              echo "Profile file: $(basename "$profile")"
-              security cms -D -i "$profile" > /tmp/codemagic_profile.plist
-              /usr/libexec/PlistBuddy -c "Print :Name" /tmp/codemagic_profile.plist || true
-              /usr/libexec/PlistBuddy -c "Print :UUID" /tmp/codemagic_profile.plist || true
-              /usr/libexec/PlistBuddy -c "Print :Entitlements:application-identifier" /tmp/codemagic_profile.plist || true
-            done
-          else
-            echo "No provisioning profiles directory found at $PROFILE_DIR"
-          fi
 
       - name: Set unique build number
         script: |
@@ -99,24 +78,40 @@ workflows:
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
             --create \
-            --certificate-key-password "${CERTIFICATE_PRIVATE_KEY_PASSWORD:-}" || true
+            --certificate-key-password "${CERTIFICATE_PRIVATE_KEY_PASSWORD:-}"
           keychain add-certificates
 
           echo "== Certificates in keychain after setup =="
-          security find-identity -v -p codesigning || true
+          security find-identity -v -p codesigning
+          # Count certificate lines (each starts with a sequence number like "  1)")
+          CERT_COUNT=$(security find-identity -v -p codesigning 2>&1 | grep -cE '^ *[0-9]+\)' || true)
+          if [[ "$CERT_COUNT" -eq 0 ]]; then
+            echo "ERROR: 0 valid code signing identities after setup. Check the codemagicFlutter integration and that your Apple Developer account has a Distribution certificate."
+            exit 1
+          fi
 
           echo "== Provisioning profiles installed =="
           PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          PROFILE_COUNT=$(find "$PROFILE_DIR" -name "*.mobileprovision" -maxdepth 1 2>/dev/null | wc -l | tr -d ' ')
           ls -1 "$PROFILE_DIR" 2>/dev/null || echo "No profiles directory found"
+          if [[ "$PROFILE_COUNT" -eq 0 ]]; then
+            echo "ERROR: 0 provisioning profiles found after setup. Ensure bundle id $BUNDLE_ID is registered in App Store Connect and the codemagicFlutter integration has App Manager role."
+            exit 1
+          fi
 
           xcode-project use-profiles
 
       - name: Build IPA
         script: |
+          # SUPABASE_URL and SUPABASE_ANON_KEY are passed as Xcode build settings so
+          # the $(SUPABASE_URL) / $(SUPABASE_ANON_KEY) entries in Info.plist are
+          # expanded at build time. SUPABASE_ANON_KEY is a public client key (safe to
+          # ship in the binary; already baked-in as fallback in AppConfig.swift).
           xcode-project build-ipa \
             --project "$XCODE_PROJECT" \
             --scheme "$XCODE_SCHEME" \
-            --config Release
+            --config Release \
+            --xcargs "SUPABASE_URL=$SUPABASE_URL SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY"
 
     artifacts:
       - build/ios/ipa/*.ipa
