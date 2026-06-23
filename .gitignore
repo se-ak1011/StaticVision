@@ -1,0 +1,32 @@
+# macOS
+.DS_Store
+
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xcscmblueprint
+*.xccheckout
+*.moved-aside
+
+# Swift Package Manager
+.swiftpm/
+.build/
+Packages/
+
+# CocoaPods / Carthage (unused, but ignore if added later)
+Pods/
+Carthage/Build/
+
+# Secrets — never commit real credentials
+Config.xcconfig
+*.p8
+*.p12
+*.mobileprovision
+*.cer
+secrets.env
+
+# Codemagic / CI local artifacts
+*.ipa
+*.app.dSYM.zip

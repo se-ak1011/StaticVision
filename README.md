@@ -117,6 +117,26 @@ Select your device/simulator and press **⌘R**.
 
 ## TestFlight / Distribution
 
+### Option A – Codemagic CI (recommended, no Mac required)
+
+This repo ships a [`codemagic.yaml`](codemagic.yaml) that builds the app and uploads it to
+TestFlight automatically. One-time setup:
+
+1. **Apple Developer Program** membership ($99/yr) and the bundle id `com.staticvision.app`
+   registered (Codemagic can auto-create it on first build).
+2. **App Store Connect API key** – create one in *App Store Connect → Users and Access →
+   Integrations → App Store Connect API* (App Manager role), download the `.p8`, and add it
+   in Codemagic under *Teams → Integrations → App Store Connect*. Name it
+   `codemagic_asc_api_key` (or update the name in `codemagic.yaml`).
+3. **Secrets group** – in Codemagic create an encrypted variable group `staticvision_secrets`
+   with `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `OPENAI_API_KEY`. The build injects these
+   into `Info.plist`; they are never committed to git.
+4. Connect this GitHub repo to a Codemagic app and start the **`ios-testflight`** workflow.
+5. In App Store Connect, add yourself as an **internal tester** – processed builds appear
+   automatically in the TestFlight app.
+
+### Option B – Xcode (manual archive)
+
 1. In Xcode set your **Team** under *Signing & Capabilities* (needs an Apple Developer account).
 2. The bundle identifier is `com.staticvision.app` – change it to match your developer account if needed.
 3. Archive: **Product → Archive → Distribute App → TestFlight & App Store → Upload**.
