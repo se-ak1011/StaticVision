@@ -140,10 +140,14 @@ TestFlight automatically. One-time setup:
 2. **App Store Connect API key** – create one in *App Store Connect → Users and Access →
    Integrations → App Store Connect API* (App Manager role), download the `.p8`, and add it
    in Codemagic under *Teams → Integrations → App Store Connect*. Name it
-   `codemagic_asc_api_key` (or update the name in `codemagic.yaml`).
-3. **Secrets group** – in Codemagic create an encrypted variable group `staticvision_secrets`
-   with `SUPABASE_URL` and `SUPABASE_ANON_KEY`. The build injects these into `Info.plist`;
-   they are never committed to git. (The OpenAI key is a Supabase secret, not a Codemagic one.)
+   `codemagicFlutter` (or update the name in `codemagic.yaml`).
+3. **Environment variables** – in Codemagic (*Applications → StaticVision → Environment variables*)
+   add app-level encrypted variables:
+   `SUPABASE_URL` and `SUPABASE_ANON_KEY`.
+   The App Store Connect credentials (`APP_STORE_CONNECT_ISSUER_ID`,
+   `APP_STORE_CONNECT_KEY_IDENTIFIER`, `APP_STORE_CONNECT_PRIVATE_KEY`) should
+   come from the `codemagicFlutter` integration configured in step 2.
+   (The OpenAI key is a Supabase secret, not a Codemagic one.)
 4. Connect this GitHub repo to a Codemagic app and start the **`ios-testflight`** workflow.
 5. In App Store Connect, add yourself as an **internal tester** – processed builds appear
    automatically in the TestFlight app.
