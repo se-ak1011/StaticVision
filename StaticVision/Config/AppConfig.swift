@@ -1,23 +1,36 @@
 import Foundation
 
 /// Central configuration for StaticVision.
-/// Replace the placeholder values with your own credentials before building.
-/// Store sensitive keys in Xcode's scheme environment variables or a local
-/// `Config.xcconfig` file that is git-ignored — never commit real API keys.
+///
+/// Values come from `Info.plist` (which CI populates from encrypted env vars),
+/// falling back to the baked-in defaults below for plain Xcode builds. The
+/// Supabase URL and publishable/anon key are safe to ship — the anon key is a
+/// public client key protected by row-level security. The OpenAI key is *not*
+/// here; it lives server-side in the `openai-proxy` Edge Function.
 enum AppConfig {
 
-    // MARK: – Supabase
-    /// Your Supabase project URL, e.g. "https://xyzxyz.supabase.co"
-    static let supabaseURL: String = {
-        Bundle.main.object(forInfoDictionaryKey: "SUPABASE_URL") as? String
-            ?? "https://YOUR_SUPABASE_PROJECT.supabase.co"
-    }()
+    /// Reads a value from Info.plist, ignoring empty or unexpanded `$(VAR)`
+    /// placeholders so the baked-in default is used instead.
+    private static func infoValue(_ key: String, default fallback: String) -> String {
+        guard let value = Bundle.main.object(forInfoDictionaryKey: key) as? String,
+              !value.isEmpty, !value.hasPrefix("$(") else {
+            return fallback
+        }
+        return value
+    }
 
-    /// Your Supabase project's public anon key
-    static let supabaseAnonKey: String = {
-        Bundle.main.object(forInfoDictionaryKey: "SUPABASE_ANON_KEY") as? String
-            ?? "YOUR_SUPABASE_ANON_KEY"
-    }()
+    // MARK: – Supabase
+    /// Supabase project URL.
+    static let supabaseURL = infoValue(
+        "SUPABASE_URL",
+        default: "https://pldqwyabiimgllyroxug.supabase.co"
+    )
+
+    /// Supabase publishable (anon) key — safe for clients, protected by RLS.
+    static let supabaseAnonKey = infoValue(
+        "SUPABASE_ANON_KEY",
+        default: "sb_publishable_SBrulv53KXEuLoIoV2l3Fg_F--e9SuE"
+    )
 
     // MARK: – OpenAI
     /// The OpenAI key is **not** stored in the app. Requests are routed through a
