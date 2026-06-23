@@ -47,8 +47,7 @@ final class BlueprintViewModel: ObservableObject {
             generationStep = "Loading images…"
             var images: [UIImage] = []
             for media in photoItems.prefix(6) {
-                guard let url = media.storageURL,
-                      let data = try? Data(contentsOf: url),
+                guard let data = try? await supabase.downloadMedia(media),
                       let image = UIImage(data: data) else { continue }
                 images.append(image)
             }

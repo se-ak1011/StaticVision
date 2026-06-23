@@ -10,9 +10,10 @@
 #   2. Encrypted variable group named `staticvision_secrets` containing:
 #        • SUPABASE_URL        e.g. https://xxxx.supabase.co
 #        • SUPABASE_ANON_KEY   the Supabase anon public key
-#        • OPENAI_API_KEY      sk-...
 #      (Mark them "Secure" so they're encrypted and stripped from logs.)
-#   3. Register the bundle id `com.staticvision.app` for your Apple Developer account
+#      NOTE: the OpenAI key is NOT needed here — it lives server-side as a Supabase
+#      secret used by the openai-proxy Edge Function (see supabase/functions/).
+#   3. Register the bundle id `com.static-vision.app` for your Apple Developer account
 #      (Codemagic can auto-create it on first build with the API key integration).
 
 workflows:
@@ -27,24 +28,23 @@ workflows:
     environment:
       ios_signing:
         distribution_type: app_store
-        bundle_identifier: com.staticvision.app
+        bundle_identifier: com.static-vision.app
       groups:
-        - staticvision_secrets                    # SUPABASE_URL, SUPABASE_ANON_KEY, OPENAI_API_KEY
+        - staticvision_secrets                    # SUPABASE_URL, SUPABASE_ANON_KEY
       vars:
         XCODE_PROJECT: "StaticVision.xcodeproj"
         XCODE_SCHEME: "StaticVision"
-        BUNDLE_ID: "com.staticvision.app"
+        BUNDLE_ID: "com.static-vision.app"
       xcode: latest
 
     scripts:
-      - name: Inject API keys into Info.plist
+      - name: Inject Supabase config into Info.plist
         script: |
           set -e
           PLIST="StaticVision/Info.plist"
           /usr/libexec/PlistBuddy -c "Set :SUPABASE_URL ${SUPABASE_URL}" "$PLIST"
           /usr/libexec/PlistBuddy -c "Set :SUPABASE_ANON_KEY ${SUPABASE_ANON_KEY}" "$PLIST"
-          /usr/libexec/PlistBuddy -c "Set :OPENAI_API_KEY ${OPENAI_API_KEY}" "$PLIST"
-          echo "Injected runtime credentials into $PLIST"
+          echo "Injected Supabase config into $PLIST"
 
       - name: Set build number
         script: |

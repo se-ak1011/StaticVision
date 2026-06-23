@@ -110,12 +110,17 @@ final class OpenAIService {
     }
 
     private func chatRequest(body: [String: Any]) async throws -> String {
-        let url = AppConfig.openAIBaseURL.appendingPathComponent("chat/completions")
-        var request = URLRequest(url: url)
+        // Calls go to the Supabase Edge Function proxy, which injects the OpenAI
+        // key server-side. We authenticate with the user's Supabase session JWT.
+        var request = URLRequest(url: AppConfig.openAIProxyURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let bearerToken = "Bearer " + AppConfig.openAIKey
-        request.setValue(bearerToken, forHTTPHeaderField: "Authorization")
+        request.setValue(AppConfig.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        if let token = SupabaseService.shared.session?.accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        } else {
+            throw AppError.authRequired
+        }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -125,7 +130,7 @@ final class OpenAIService {
         }
         guard (200...299).contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? ""
-            throw AppError.serverError("OpenAI HTTP \(http.statusCode): \(body)")
+            throw AppError.serverError("OpenAI proxy HTTP \(http.statusCode): \(body)")
         }
 
         guard

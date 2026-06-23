@@ -20,14 +20,18 @@ enum AppConfig {
     }()
 
     // MARK: – OpenAI
-    /// Your OpenAI API key (sk-…)
-    static let openAIKey: String = {
-        Bundle.main.object(forInfoDictionaryKey: "OPENAI_API_KEY") as? String
-            ?? "YOUR_OPENAI_API_KEY"
-    }()
+    /// The OpenAI key is **not** stored in the app. Requests are routed through a
+    /// Supabase Edge Function (`openai-proxy`) that holds the key server-side as a
+    /// Supabase secret, so it can never be extracted from the shipped binary.
+    /// The function authenticates callers with their Supabase session JWT.
+    static let openAIProxyFunction = "openai-proxy"
 
-    static let openAIBaseURL = URL(string: "https://api.openai.com/v1")!
-    static let openAIModel  = "gpt-4o"
+    /// Full URL of the OpenAI proxy edge function.
+    static var openAIProxyURL: URL {
+        URL(string: "\(supabaseURL)/functions/v1/\(openAIProxyFunction)")!
+    }
+
+    static let openAIModel = "gpt-4o"
 
     // MARK: – Storage buckets
     static let mediaBucket     = "project-media"

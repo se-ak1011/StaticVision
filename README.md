@@ -25,7 +25,8 @@
 
 - **iOS 17+** · SwiftUI · async/await
 - **Supabase** – Auth · PostgreSQL (PostgREST) · Storage
-- **OpenAI GPT-4o** – Vision API for blueprint generation + design suggestions
+- **OpenAI GPT-4o** – Vision API for blueprint generation + design suggestions, accessed
+  through a Supabase Edge Function so the API key stays server-side
 - No third-party Swift packages required (raw URLSession calls)
 
 ---
@@ -61,8 +62,10 @@ StaticVision/
 │   ├── Info.plist
 │   └── StaticVision.entitlements
 └── supabase/
-    └── migrations/
-        └── 20240101000000_initial_schema.sql
+    ├── migrations/
+    │   └── 20240101000000_initial_schema.sql
+    └── functions/
+        └── openai-proxy/        Edge Function that proxies OpenAI (keeps key server-side)
 ```
 
 ---
@@ -78,10 +81,22 @@ StaticVision/
    - `blueprints` – set to **private**
 4. Note your **Project URL** and **anon public key** from *Project Settings → API*.
 
-### 2. OpenAI
+### 2. OpenAI (server-side, via Supabase Edge Function)
 
-1. Create an API key at [platform.openai.com/api-keys](https://platform.openai.com/api-keys).
-2. Ensure your account has access to `gpt-4o`.
+The OpenAI key is **never** stored in the app — it lives server-side in the
+`openai-proxy` Edge Function so it can't be extracted from the shipped binary.
+
+1. Create an API key at [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
+   and ensure your account has access to `gpt-4o`.
+2. Deploy the proxy function and set the key as a Supabase secret:
+
+   ```bash
+   supabase functions deploy openai-proxy
+   supabase secrets set OPENAI_API_KEY=sk-...
+   ```
+
+   The function authenticates callers with their Supabase session JWT, so only
+   signed-in users of your app can use it.
 
 ### 3. Xcode – add your credentials
 
@@ -91,16 +106,14 @@ Open the scheme editor (**Product → Scheme → Edit Scheme → Run → Argumen
 |---|---|
 | `SUPABASE_URL` | `https://xxxx.supabase.co` |
 | `SUPABASE_ANON_KEY` | `eyJ…` |
-| `OPENAI_API_KEY` | `sk-…` |
 
-> **Never commit real API keys.** The `Info.plist` reads from `$(VARIABLE_NAME)` which is expanded at build time from the scheme environment or an `.xcconfig` file.
+> **Never commit real keys.** The `Info.plist` reads from `$(VARIABLE_NAME)`, expanded at build time from the scheme environment or an `.xcconfig` file. The OpenAI key is not needed in the app.
 
 Alternatively, create `StaticVision/Config.xcconfig` (add to `.gitignore`):
 
 ```xcconfig
 SUPABASE_URL = https://xxxx.supabase.co
 SUPABASE_ANON_KEY = eyJ…
-OPENAI_API_KEY = sk-…
 ```
 
 Then reference it in the target's build settings.
@@ -122,15 +135,15 @@ Select your device/simulator and press **⌘R**.
 This repo ships a [`codemagic.yaml`](codemagic.yaml) that builds the app and uploads it to
 TestFlight automatically. One-time setup:
 
-1. **Apple Developer Program** membership ($99/yr) and the bundle id `com.staticvision.app`
+1. **Apple Developer Program** membership ($99/yr) and the bundle id `com.static-vision.app`
    registered (Codemagic can auto-create it on first build).
 2. **App Store Connect API key** – create one in *App Store Connect → Users and Access →
    Integrations → App Store Connect API* (App Manager role), download the `.p8`, and add it
    in Codemagic under *Teams → Integrations → App Store Connect*. Name it
    `codemagic_asc_api_key` (or update the name in `codemagic.yaml`).
 3. **Secrets group** – in Codemagic create an encrypted variable group `staticvision_secrets`
-   with `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `OPENAI_API_KEY`. The build injects these
-   into `Info.plist`; they are never committed to git.
+   with `SUPABASE_URL` and `SUPABASE_ANON_KEY`. The build injects these into `Info.plist`;
+   they are never committed to git. (The OpenAI key is a Supabase secret, not a Codemagic one.)
 4. Connect this GitHub repo to a Codemagic app and start the **`ios-testflight`** workflow.
 5. In App Store Connect, add yourself as an **internal tester** – processed builds appear
    automatically in the TestFlight app.
@@ -138,7 +151,7 @@ TestFlight automatically. One-time setup:
 ### Option B – Xcode (manual archive)
 
 1. In Xcode set your **Team** under *Signing & Capabilities* (needs an Apple Developer account).
-2. The bundle identifier is `com.staticvision.app` – change it to match your developer account if needed.
+2. The bundle identifier is `com.static-vision.app` – change it to match your developer account if needed.
 3. Archive: **Product → Archive → Distribute App → TestFlight & App Store → Upload**.
 4. In App Store Connect, add yourself as an **internal tester** and install via the TestFlight app.
 

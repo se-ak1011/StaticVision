@@ -55,7 +55,7 @@ final class ProjectViewModel: ObservableObject {
             for (index, image) in photos.enumerated() {
                 guard let jpeg = image.jpegData(compressionQuality: 0.8) else { continue }
                 let path = "\(userId)/\(project.id)/photo_\(index).jpg"
-                _ = try await self.supabase.uploadFile(
+                try await self.supabase.uploadFile(
                     bucket: AppConfig.mediaBucket,
                     path: path,
                     data: jpeg,
@@ -78,7 +78,7 @@ final class ProjectViewModel: ObservableObject {
             if let videoURL {
                 let videoData = try Data(contentsOf: videoURL)
                 let path = "\(userId)/\(project.id)/walkthrough.mp4"
-                _ = try await self.supabase.uploadFile(
+                try await self.supabase.uploadFile(
                     bucket: AppConfig.mediaBucket,
                     path: path,
                     data: videoData,
