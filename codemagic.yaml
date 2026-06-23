@@ -5,8 +5,7 @@
 #   1. App Store Connect API key integration named `codemagicFlutter`.
 #   2. Add app-level environment variables:
 #      SUPABASE_URL, SUPABASE_ANON_KEY, APP_STORE_CONNECT_ISSUER_ID,
-#      APP_STORE_CONNECT_KEY_IDENTIFIER (or APP_STORE_CONNECT_KEY_ID),
-#      APP_STORE_CONNECT_PRIVATE_KEY.
+#      APP_STORE_CONNECT_KEY_IDENTIFIER, APP_STORE_CONNECT_PRIVATE_KEY.
 #   3. Register the bundle id `com.static-vision.app` and create its app record in
 #      App Store Connect.
 
