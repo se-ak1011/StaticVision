@@ -32,28 +32,16 @@ workflows:
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.static-vision.app
-      groups:
-        - staticvision_secrets                    # optional: SUPABASE_URL, SUPABASE_ANON_KEY
       vars:
         XCODE_PROJECT: "StaticVision.xcodeproj"
         XCODE_SCHEME: "StaticVision"
         BUNDLE_ID: "com.static-vision.app"
       xcode: latest
+      # Supabase URL/key are baked into AppConfig.swift. To override them per-build
+      # instead, create an encrypted variable group (e.g. `staticvision_secrets`),
+      # add it under `groups:` here, and inject the values into Info.plist.
 
     scripts:
-      - name: Inject Supabase config into Info.plist
-        script: |
-          set -e
-          PLIST="StaticVision/Info.plist"
-          # Only override when the secrets group provides values; otherwise the
-          # defaults baked into AppConfig.swift are used.
-          if [ -n "${SUPABASE_URL}" ]; then
-            /usr/libexec/PlistBuddy -c "Set :SUPABASE_URL ${SUPABASE_URL}" "$PLIST"
-          fi
-          if [ -n "${SUPABASE_ANON_KEY}" ]; then
-            /usr/libexec/PlistBuddy -c "Set :SUPABASE_ANON_KEY ${SUPABASE_ANON_KEY}" "$PLIST"
-          fi
-
       - name: Set build number
         script: |
           set -e
