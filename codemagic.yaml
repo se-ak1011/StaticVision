@@ -19,7 +19,7 @@ workflows:
 
     environment:
       ios_signing:
-        distribution_type: development
+        distribution_type: app_store
         bundle_identifier: com.static-vision.app
       groups:
         - ios_signing
