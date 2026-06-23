@@ -30,7 +30,7 @@ workflows:
 
     environment:
       ios_signing:
-        distribution_type: app_store
+        distribution_type: development
         bundle_identifier: com.static-vision.app
       groups:
         - ios_signing            # shared group: distribution cert private key + ASC creds (same as PAI)
