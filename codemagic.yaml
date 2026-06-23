@@ -32,6 +32,7 @@ workflows:
     scripts:
       - name: Normalize bundle identifier variables
         script: |
+          # BUNDLE_ID is defined in environment.vars above.
           if [[ -z "${BUNDLE_ID:-}" ]]; then
             echo "Missing required workflow variable: BUNDLE_ID"
             exit 1

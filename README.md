@@ -141,7 +141,8 @@ TestFlight automatically. One-time setup:
    Integrations → App Store Connect API* (App Manager role), download the `.p8`, and add it
    in Codemagic under *Teams → Integrations → App Store Connect*. Name it
    `codemagicFlutter` (or update the name in `codemagic.yaml`).
-3. **Environment variables** – in Codemagic add app-level encrypted variables:
+3. **Environment variables** – in Codemagic (*Applications → StaticVision → Environment variables*)
+   add app-level encrypted variables:
    `SUPABASE_URL` and `SUPABASE_ANON_KEY`.
    The App Store Connect credentials (`APP_STORE_CONNECT_ISSUER_ID`,
    `APP_STORE_CONNECT_KEY_IDENTIFIER`, `APP_STORE_CONNECT_PRIVATE_KEY`) should
