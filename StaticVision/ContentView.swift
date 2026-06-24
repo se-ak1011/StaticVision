@@ -17,6 +17,8 @@ struct ContentView: View {
                     .environmentObject(authViewModel)
             }
         }
+        .tint(.brandPurple)
+        .preferredColorScheme(.dark)
         .animation(.easeInOut, value: authViewModel.isAuthenticated)
     }
 }

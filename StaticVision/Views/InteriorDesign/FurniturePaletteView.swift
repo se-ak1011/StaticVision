@@ -22,7 +22,7 @@ struct FurniturePaletteView: View {
                                     .padding(.vertical, 8)
                                     .background(
                                         designVM.activeFurnitureCategory == cat
-                                        ? Color.blue : Color.secondary.opacity(0.12)
+                                        ? Color.brandPurple : Color.secondary.opacity(0.12)
                                     )
                                     .foregroundColor(
                                         designVM.activeFurnitureCategory == cat ? .white : .primary

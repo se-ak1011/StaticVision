@@ -96,7 +96,7 @@ struct InteriorDesignView: View {
                             .padding(.horizontal, 14)
                             .padding(.vertical, 8)
                             .background(selectedRoom?.id == room.id
-                                        ? Color.blue : Color.secondary.opacity(0.15))
+                                        ? Color.brandPurple : Color.secondary.opacity(0.15))
                             .foregroundColor(selectedRoom?.id == room.id ? .white : .primary)
                             .clipShape(Capsule())
                     }
@@ -531,7 +531,7 @@ struct AISuggestionSheet: View {
                     Label("Get AI Suggestions", systemImage: "sparkles")
                         .frame(maxWidth: .infinity)
                         .frame(height: 44)
-                        .background(Color.blue)
+                        .background(Color.brandPurple)
                         .foregroundColor(.white)
                         .cornerRadius(12)
                         .padding(.horizontal)

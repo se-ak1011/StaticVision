@@ -12,7 +12,7 @@ struct AuthView: View {
             ZStack {
                 // Background gradient
                 LinearGradient(
-                    colors: [Color(hex: "#1A1A2E"), Color(hex: "#16213E"), Color(hex: "#0F3460")],
+                    colors: [Color(hex: "#0D0717"), Color(hex: "#1A0B2E"), Color(hex: "#2D1B4E")],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
@@ -24,7 +24,7 @@ struct AuthView: View {
                         Image(systemName: "house.and.flag.fill")
                             .font(.system(size: 60))
                             .foregroundStyle(
-                                LinearGradient(colors: [.white, Color(hex: "#E94560")],
+                                LinearGradient(colors: [.white, Color.brandPurple],
                                                startPoint: .top, endPoint: .bottom)
                             )
 
@@ -71,7 +71,7 @@ struct AuthView: View {
                     // Error
                     if let err = viewModel.errorMessage {
                         Text(err)
-                            .foregroundColor(Color(hex: "#E94560"))
+                            .foregroundColor(Color.brandPurple)
                             .font(.caption)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 24)
@@ -96,7 +96,7 @@ struct AuthView: View {
                         }
                         .frame(maxWidth: .infinity)
                         .frame(height: 50)
-                        .background(Color(hex: "#E94560"))
+                        .background(Color.brandPurple)
                         .foregroundColor(.white)
                         .cornerRadius(14)
                     }
@@ -112,7 +112,7 @@ struct AuthView: View {
                             Text(isSignUp ? "Already have an account?" : "New here?")
                                 .foregroundColor(.white.opacity(0.6))
                             Text(isSignUp ? "Sign In" : "Create Account")
-                                .foregroundColor(Color(hex: "#E94560"))
+                                .foregroundColor(Color.brandPurple)
                                 .fontWeight(.semibold)
                         }
                         .font(.subheadline)
@@ -161,6 +161,11 @@ extension Color {
                   blue: Double(b) / 255,
                   opacity: Double(a) / 255)
     }
+
+    // MARK: – Brand palette (dark purple & black)
+    static let brandPurple     = Color(hex: "#9D4EDD")
+    static let brandPurpleDeep = Color(hex: "#6A2FB5")
+    static let brandBackground = Color(hex: "#0D0717")
 }
 
 #Preview {

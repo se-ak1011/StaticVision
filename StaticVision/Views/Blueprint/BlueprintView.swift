@@ -93,7 +93,7 @@ struct BlueprintView: View {
                 Label("Generate Blueprint", systemImage: "wand.and.stars")
                     .frame(maxWidth: .infinity)
                     .frame(height: 50)
-                    .background(Color.blue)
+                    .background(Color.brandPurple)
                     .foregroundColor(.white)
                     .cornerRadius(14)
                     .padding(.horizontal, 40)
@@ -206,7 +206,7 @@ struct BlueprintGridView: View {
 
     var body: some View {
         Canvas { context, size in
-            let gridColor = Color(hex: "#3B6CD4").opacity(0.18)
+            let gridColor = Color(hex: "#9D4EDD").opacity(0.20)
             // Vertical lines
             var x: CGFloat = 0
             while x <= size.width {
@@ -226,7 +226,7 @@ struct BlueprintGridView: View {
                 y += gridSize
             }
         }
-        .background(Color(hex: "#0D1B2A"))
+        .background(Color(hex: "#0D0717"))
         .frame(width: width, height: height)
     }
 }
@@ -246,7 +246,7 @@ struct RoomTileView: View {
             // Wall outline
             Rectangle()
                 .stroke(
-                    isSelected ? Color.yellow : Color(hex: "#3B6CD4"),
+                    isSelected ? Color.yellow : Color(hex: "#9D4EDD"),
                     lineWidth: isSelected ? 2.5 : 1.5
                 )
 
