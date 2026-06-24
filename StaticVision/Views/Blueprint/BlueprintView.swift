@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct BlueprintView: View {
     let project: Project
@@ -9,6 +10,7 @@ struct BlueprintView: View {
     @GestureState private var gestureZoom: CGFloat = 1.0
     @State private var offset: CGSize = .zero
     @GestureState private var gestureDrag: CGSize = .zero
+    @State private var sourcePhotos: [UIImage] = []
 
     var body: some View {
         ZStack {
@@ -18,12 +20,18 @@ struct BlueprintView: View {
             if viewModel.isGenerating {
                 generatingState
             } else if let blueprint = viewModel.blueprint {
-                blueprintCanvas(blueprint)
-                    .overlay(alignment: .bottom) { bottomToolbar }
+                VStack(spacing: 0) {
+                    if !sourcePhotos.isEmpty {
+                        SourcePhotoStrip(images: sourcePhotos)
+                    }
+                    blueprintCanvas(blueprint)
+                        .overlay(alignment: .bottom) { bottomToolbar }
+                }
             } else {
                 emptyState
             }
         }
+        .task { await loadSourcePhotos() }
         .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
             Button("OK") { viewModel.errorMessage = nil }
         } message: {
@@ -35,6 +43,22 @@ struct BlueprintView: View {
                     .environmentObject(viewModel)
             }
         }
+    }
+
+    // MARK: – Source photos
+
+    private func loadSourcePhotos() async {
+        guard sourcePhotos.isEmpty else { return }
+        let media = (try? await SupabaseService.shared.fetchMedia(projectId: project.id)) ?? []
+        var images: [UIImage] = []
+        for item in media where item.mediaType == .photo {
+            if let data = try? await SupabaseService.shared.downloadMedia(item),
+               let img = UIImage(data: data) {
+                images.append(img)
+            }
+        }
+        let loaded = images
+        await MainActor.run { sourcePhotos = loaded }
     }
 
     // MARK: – States
@@ -253,6 +277,51 @@ struct RoomTileView: View {
             }
         }
         .clipShape(Rectangle())
+    }
+}
+
+// MARK: – Source photo strip
+
+struct SourcePhotoStrip: View {
+    let images: [UIImage]
+    @State private var preview: PreviewImage?
+
+    private struct PreviewImage: Identifiable {
+        let id = UUID()
+        let image: UIImage
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Your photos")
+                .font(.caption2.weight(.semibold))
+                .foregroundColor(.secondary)
+                .padding(.horizontal, 12)
+                .padding(.top, 6)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(images.indices, id: \.self) { i in
+                        Image(uiImage: images[i])
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 64, height: 64)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .onTapGesture { preview = PreviewImage(image: images[i]) }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+            }
+        }
+        .background(.ultraThinMaterial)
+        .sheet(item: $preview) { item in
+            Image(uiImage: item.image)
+                .resizable()
+                .scaledToFit()
+                .ignoresSafeArea()
+                .background(Color.black)
+                .onTapGesture { preview = nil }
+        }
     }
 }
 

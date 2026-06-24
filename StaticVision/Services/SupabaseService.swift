@@ -205,7 +205,11 @@ final class SupabaseService: ObservableObject {
 
     func upsertBlueprint(_ blueprint: Blueprint) async throws -> Blueprint {
         let body = try encoder.encode(blueprint)
-        let url = restURL.appendingPathComponent("blueprints")
+        // Upsert on the project_id unique constraint so re-generating updates the
+        // existing row instead of colliding with it (HTTP 409).
+        let url = restURL
+            .appendingPathComponent("blueprints")
+            .appending(queryItems: [URLQueryItem(name: "on_conflict", value: "project_id")])
         var headers = baseHeaders
         headers["Prefer"] = "return=representation,resolution=merge-duplicates"
         let data = try await post(url: url, bodyData: body, extraHeaders: headers)

@@ -1,6 +1,7 @@
 import SwiftUI
 import PhotosUI
 import AVKit
+import UniformTypeIdentifiers
 
 struct NewProjectView: View {
     @EnvironmentObject private var viewModel: ProjectViewModel
@@ -213,8 +214,27 @@ struct NewProjectView: View {
 
     private func loadVideo(from item: PhotosPickerItem?) async {
         guard let item else { return }
-        if let url = try? await item.loadTransferable(type: URL.self) {
-            await MainActor.run { videoURL = url }
+        // PhotosPicker doesn't hand back a plain URL for videos, so we copy the
+        // transferred movie file to a temporary URL we can read and upload.
+        if let movie = try? await item.loadTransferable(type: Movie.self) {
+            await MainActor.run { videoURL = movie.url }
+        }
+    }
+}
+
+/// Transferable wrapper so a picked video can be copied to a readable file URL.
+struct Movie: Transferable {
+    let url: URL
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(contentType: .movie) { movie in
+            SentTransferredFile(movie.url)
+        } importing: { received in
+            let dest = FileManager.default.temporaryDirectory
+                .appendingPathComponent("walkthrough-\(UUID().uuidString).mov")
+            try? FileManager.default.removeItem(at: dest)
+            try FileManager.default.copyItem(at: received.file, to: dest)
+            return Movie(url: dest)
         }
     }
 }

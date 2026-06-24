@@ -37,15 +37,15 @@ final class OpenAIService {
     // MARK: – Private helpers
 
     private func analyseImages(_ images: [UIImage]) async throws -> AIBlueprintResponse {
-        let maxImages = min(images.count, 6)   // stay within token limits
+        let maxImages = min(images.count, 8)
         let selected = Array(images.prefix(maxImages))
 
         var contentParts: [[String: Any]] = [
             [
                 "type": "text",
                 "text": """
-                You are an expert architectural analyst. Analyse these property images and \
-                generate a detailed floor-plan layout.
+                You are an expert architectural surveyor. ALL of the following images are of \
+                the SAME property. Reconstruct an accurate floor plan from what is actually visible.
 
                 Return ONLY valid JSON (no markdown, no extra text) with exactly this structure:
                 {
@@ -58,27 +58,32 @@ final class OpenAIService {
                       "suggested_furniture": ["Sofa", "Coffee Table", ...]
                     }
                   ],
-                  "notes": "Optional notes about the layout"
+                  "notes": "Brief notes about anything uncertain"
                 }
 
-                Guidelines:
-                - Estimate dimensions from visual cues (doors ~3 ft wide, ceilings ~8–9 ft).
-                - Include all visible rooms plus inferred ones (hallways, bathrooms, etc.).
-                - Typical room names: Living Room, Kitchen, Master Bedroom, Bedroom 2, \
-                  Bathroom, Ensuite, Hallway, Dining Room, Utility Room, Garage.
-                - width_ft and height_ft should be in the range 8–30 for most rooms.
+                STRICT rules:
+                - Only include rooms you can SEE clear evidence of. Do NOT invent or assume \
+                  rooms (e.g. don't add a hallway, utility room or garage unless it is visible).
+                - If the same room appears across multiple photos, count it ONCE.
+                - Estimate dimensions from visible reference objects: interior door ≈ 32 in wide, \
+                  ceiling ≈ 8 ft, kitchen counter ≈ 36 in tall, double bed ≈ 4.5 × 6.5 ft, \
+                  sofa ≈ 6–7 ft wide.
+                - Use specific realistic names (Living Room, Kitchen, Master Bedroom, Bathroom…).
+                - width_ft/height_ft are the floor footprint in feet (typically 6–25).
+                - Only list adjacent_rooms where a connecting doorway/opening is actually visible.
+                - It is better to return FEWER, accurate rooms than many guessed ones.
                 """,
             ]
         ]
 
         for image in selected {
-            guard let jpeg = image.jpegData(compressionQuality: 0.7) else { continue }
+            guard let jpeg = image.jpegData(compressionQuality: 0.85) else { continue }
             let base64 = jpeg.base64EncodedString()
             contentParts.append([
                 "type": "image_url",
                 "image_url": [
                     "url": "data:image/jpeg;base64,\(base64)",
-                    "detail": "low",
+                    "detail": "high",
                 ],
             ])
         }
@@ -90,7 +95,7 @@ final class OpenAIService {
         let body: [String: Any] = [
             "model": AppConfig.openAIModel,
             "messages": messages,
-            "max_tokens": 1500,
+            "max_tokens": 2500,
             "temperature": 0.2,
             "response_format": ["type": "json_object"],
         ]
