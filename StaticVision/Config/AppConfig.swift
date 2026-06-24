@@ -49,4 +49,12 @@ enum AppConfig {
     // MARK: – Storage buckets
     static let mediaBucket     = "project-media"
     static let blueprintBucket = "blueprints"
+
+    // MARK: – Shared account (personal app, no per-user login)
+    /// Both users share ONE Supabase account, so projects/blueprints are shared and
+    /// nobody has to sign in. The app auto-signs-in (and auto-creates the account on
+    /// first launch) with these credentials. Requires "Confirm email" turned OFF in
+    /// Supabase → Authentication → Providers → Email.
+    static let sharedAccountEmail    = "drainedstore@gmail.com"
+    static let sharedAccountPassword = "REPLACE_WITH_A_PASSWORD"
 }

@@ -5,10 +5,14 @@ struct ContentView: View {
 
     var body: some View {
         Group {
-            if authViewModel.isAuthenticated {
+            if authViewModel.isInitializing {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if authViewModel.isAuthenticated {
                 ProjectsView()
                     .environmentObject(authViewModel)
             } else {
+                // Fallback only if the silent shared-account sign-in fails.
                 AuthView()
                     .environmentObject(authViewModel)
             }
