@@ -51,7 +51,7 @@ struct ProjectsView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: { p in
-                Text(""\(p.name)" and all its media will be deleted.")
+                Text("\"\(p.name)\" and all its media will be deleted.")
             }
             .task { await viewModel.fetchProjects() }
             .refreshable { await viewModel.fetchProjects() }
