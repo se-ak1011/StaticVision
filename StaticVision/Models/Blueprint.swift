@@ -3,7 +3,7 @@ import SwiftUI
 
 // MARK: - Blueprint
 
-struct Blueprint: Identifiable, Codable {
+struct Blueprint: Identifiable, Codable, Equatable {
     let id: UUID
     let projectId: UUID
     var rooms: [Room]

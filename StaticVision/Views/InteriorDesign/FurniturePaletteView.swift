@@ -110,16 +110,8 @@ struct FurnitureSilhouette: View {
         GeometryReader { geo in
             let w = geo.size.width
             let h = geo.size.height
-            let itemW: CGFloat
-            let itemH: CGFloat
-
-            if aspectRatio > 1 {
-                itemW = w
-                itemH = w / aspectRatio
-            } else {
-                itemH = h
-                itemW = h * aspectRatio
-            }
+            let itemW: CGFloat = aspectRatio > 1 ? w : h * aspectRatio
+            let itemH: CGFloat = aspectRatio > 1 ? w / aspectRatio : h
 
             ZStack {
                 RoundedRectangle(cornerRadius: 6)

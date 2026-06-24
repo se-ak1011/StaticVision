@@ -4,12 +4,12 @@ import Foundation
 
 /// The structured JSON that OpenAI returns when asked to analyse
 /// property images and generate a floor plan layout.
-struct AIBlueprintResponse: Codable {
+struct AIBlueprintResponse: Decodable {
     let rooms: [AIRoom]
     let notes: String?
 }
 
-struct AIRoom: Codable {
+struct AIRoom: Decodable {
     let name: String
     let widthFt: Double
     let heightFt: Double
@@ -17,7 +17,7 @@ struct AIRoom: Codable {
     let suggestedFurniture: [String]?
 
     enum CodingKeys: String, CodingKey {
-        case name, notes
+        case name
         case widthFt         = "width_ft"
         case heightFt        = "height_ft"
         case adjacentRooms   = "adjacent_rooms"

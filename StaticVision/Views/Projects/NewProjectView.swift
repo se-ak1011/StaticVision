@@ -78,7 +78,7 @@ struct NewProjectView: View {
 
                 // Video section
                 Section {
-                    if let videoURL {
+                    if videoURL != nil {
                         HStack {
                             Image(systemName: "film.fill")
                                 .foregroundColor(.blue)
