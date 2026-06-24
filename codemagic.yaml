@@ -1,16 +1,12 @@
 # Codemagic CI/CD — StaticVision  →  TestFlight
 #
-# Code signing mirrors the working PAI setup:
-#   • integration `codemagicFlutter`  → App Store Connect API credentials
-#   • variable group `ios_signing`     → the distribution certificate's PRIVATE KEY
-#     (CERTIFICATE_PRIVATE_KEY) + ASC creds, shared across the team.
+# Signing matches the working PAI app exactly: declarative `ios_signing`
+# (distribution_type + bundle_identifier) + the shared `ios_signing` variable
+# group + the `codemagicFlutter` App Store Connect API key integration. Codemagic
+# manages the certificate, private key and provisioning profile automatically;
+# `xcode-project use-profiles` applies them to the project.
 #
-# The private key is the crucial bit: `fetch-signing-files` downloads the
-# certificate from App Store Connect, but that copy has no private key, so without
-# the `ios_signing` group `keychain add-certificates` yields 0 valid identities
-# (the "0 values" failure). With the group present, signing works.
-#
-# Supabase URL/key are baked into AppConfig.swift, so no Supabase vars are needed here.
+# Supabase URL/key are baked into AppConfig.swift, so no Supabase vars are needed.
 
 workflows:
   ios-testflight:
@@ -22,8 +18,11 @@ workflows:
       app_store_connect: codemagicFlutter
 
     environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.static-vision.app
       groups:
-        - ios_signing            # CERTIFICATE_PRIVATE_KEY (+ password) + ASC creds — REQUIRED for signing
+        - ios_signing
       vars:
         XCODE_PROJECT: "StaticVision.xcodeproj"
         XCODE_SCHEME: "StaticVision"
@@ -34,33 +33,12 @@ workflows:
       - name: Set unique build number
         script: |
           set -e
-          # Unix timestamp => always higher than the last upload, so App Store Connect
-          # never rejects a build for a duplicate CFBundleVersion.
           BUILD_NUM=$(date +%s)
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUM" "StaticVision/Info.plist"
           echo "CFBundleVersion set to $BUILD_NUM"
 
       - name: Set up code signing
-        script: |
-          set -e
-          keychain initialize
-          # Fetch (or create) the distribution certificate + App Store profile for the
-          # bundle id. CERTIFICATE_PRIVATE_KEY (from the ios_signing group) supplies the
-          # private key so a usable signing identity is produced.
-          app-store-connect fetch-signing-files "$BUNDLE_ID" \
-            --type IOS_APP_STORE \
-            --create
-          keychain add-certificates
-
-          echo "== Code signing identities =="
-          security find-identity -v -p codesigning
-          CERT_COUNT=$(security find-identity -v -p codesigning 2>&1 | grep -cE '^ *[0-9]+\)' || true)
-          if [ "$CERT_COUNT" -eq 0 ]; then
-            echo "ERROR: 0 valid signing identities. The 'ios_signing' variable group must define CERTIFICATE_PRIVATE_KEY (the distribution cert's private key)."
-            exit 1
-          fi
-
-          xcode-project use-profiles
+        script: xcode-project use-profiles
 
       - name: Build IPA
         script: |
