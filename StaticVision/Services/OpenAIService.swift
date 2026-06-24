@@ -34,6 +34,50 @@ final class OpenAIService {
         return try await chatCompletion(prompt: prompt)
     }
 
+    // MARK: – Room Visualiser (image → styled image)
+
+    /// Sends a room photo + style prompt to the `room-visualizer` Edge Function
+    /// (which calls OpenAI's image model) and returns the rendered "after" image.
+    func visualizeRoom(image: UIImage, prompt: String) async throws -> UIImage {
+        guard let jpeg = image.jpegData(compressionQuality: 0.85) else {
+            throw AppError.parsingError("Could not encode the photo.")
+        }
+        let body: [String: Any] = [
+            "image_base64": jpeg.base64EncodedString(),
+            "prompt": prompt,
+            "size": "auto",
+        ]
+
+        var request = URLRequest(url: AppConfig.roomVisualizerURL)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 150
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(AppConfig.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        guard let token = SupabaseService.shared.session?.accessToken else {
+            throw AppError.authRequired
+        }
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw AppError.serverError("No response")
+        }
+        guard (200...299).contains(http.statusCode) else {
+            let msg = String(data: data, encoding: .utf8) ?? ""
+            throw AppError.serverError("Visualiser HTTP \(http.statusCode): \(msg)")
+        }
+        guard
+            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let b64 = json["image_base64"] as? String,
+            let imageData = Data(base64Encoded: b64),
+            let result = UIImage(data: imageData)
+        else {
+            throw AppError.parsingError("The visualiser didn't return an image.")
+        }
+        return result
+    }
+
     // MARK: – Private helpers
 
     private func analyseImages(_ images: [UIImage]) async throws -> AIBlueprintResponse {

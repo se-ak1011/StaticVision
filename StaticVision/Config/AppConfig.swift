@@ -46,6 +46,12 @@ enum AppConfig {
 
     static let openAIModel = "gpt-4o"
 
+    /// Edge Function that turns a room photo into a styled, cleaned-up "after" image.
+    static let roomVisualizerFunction = "room-visualizer"
+    static var roomVisualizerURL: URL {
+        URL(string: "\(supabaseURL)/functions/v1/\(roomVisualizerFunction)")!
+    }
+
     // MARK: – Storage buckets
     static let mediaBucket     = "project-media"
     static let blueprintBucket = "blueprints"
