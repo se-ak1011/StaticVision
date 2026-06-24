@@ -28,6 +28,7 @@ struct ContentView: View {
 
 enum VisualStyle: String, CaseIterable, Identifiable {
     case fairyBeachBoho = "Fairy Beach Boho"
+    case elenasRoom     = "Elena's Room"
     case cosyCabin      = "Cosy Cabin"
     case brightAiry     = "Bright & Airy"
     case modernWarm     = "Modern Warm"
@@ -47,6 +48,8 @@ enum VisualStyle: String, CaseIterable, Identifiable {
         switch self {
         case .fairyBeachBoho:
             return base + " Decorate it as a cosy bohemian 'fairy + coastal + hippie' retreat: reclaimed and driftwood timber, steampunk brass and copper accents, lots of warm fairy string lights, macramé wall hangings, layered rugs and floor cushions, trailing houseplants, lanterns and candles, a soft and slightly magical ambience."
+        case .elenasRoom:
+            return base + " Decorate it as a magical, cosy young child's bedroom that matches the home's warm bohemian feel: a low child's bed with a soft canopy or fabric teepee reading nook, gentle pastel and warm-wood tones, fairy string lights, fluffy rug, plush cushions and soft toys, a few hanging plants and paper lanterns, whimsical and dreamy but realistic and safe — a warm, inviting space for a little girl."
         case .cosyCabin:
             return base + " Decorate it as a warm rustic cabin: natural timber, chunky knitted throws, the log burner lit and glowing, amber lighting, snug and inviting."
         case .brightAiry:
