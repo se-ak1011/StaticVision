@@ -56,5 +56,5 @@ enum AppConfig {
     /// first launch) with these credentials. Requires "Confirm email" turned OFF in
     /// Supabase → Authentication → Providers → Email.
     static let sharedAccountEmail    = "drainedstore@gmail.com"
-    static let sharedAccountPassword = "REPLACE_WITH_A_PASSWORD"
+    static let sharedAccountPassword = "Beanjamin@13246"
 }
