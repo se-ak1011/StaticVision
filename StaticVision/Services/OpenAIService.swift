@@ -37,7 +37,7 @@ final class OpenAIService {
     // MARK: – Private helpers
 
     private func analyseImages(_ images: [UIImage]) async throws -> AIBlueprintResponse {
-        let maxImages = min(images.count, 8)
+        let maxImages = min(images.count, 10)
         let selected = Array(images.prefix(maxImages))
 
         var contentParts: [[String: Any]] = [

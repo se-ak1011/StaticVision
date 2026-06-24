@@ -1,6 +1,7 @@
 import Foundation
 import UIKit
 import Combine
+import AVFoundation
 
 @MainActor
 final class BlueprintViewModel: ObservableObject {
@@ -43,13 +44,30 @@ final class BlueprintViewModel: ObservableObject {
             generationStep = "Fetching media…"
             let mediaItems = try await supabase.fetchMedia(projectId: project.id)
             let photoItems = mediaItems.filter { $0.mediaType == .photo }
+            let videoItems = mediaItems.filter { $0.mediaType == .video }
 
-            generationStep = "Loading images…"
+            generationStep = "Loading photos…"
             var images: [UIImage] = []
-            for media in photoItems.prefix(6) {
-                guard let data = try? await supabase.downloadMedia(media),
-                      let image = UIImage(data: data) else { continue }
-                images.append(image)
+            for media in photoItems.prefix(4) {
+                if let data = try? await supabase.downloadMedia(media),
+                   let image = UIImage(data: data) {
+                    images.append(image)
+                }
+            }
+
+            // Pull frames from the walk-around video — far more spatial context
+            // than stills alone, which is the whole point of the app.
+            if let video = videoItems.first {
+                generationStep = "Analysing walk-through video…"
+                if let data = try? await supabase.downloadMedia(video) {
+                    let tmp = FileManager.default.temporaryDirectory
+                        .appendingPathComponent("bp-\(UUID().uuidString).mp4")
+                    if (try? data.write(to: tmp)) != nil {
+                        let frames = await extractVideoFrames(from: tmp, maxFrames: 8)
+                        images.append(contentsOf: frames)
+                        try? FileManager.default.removeItem(at: tmp)
+                    }
+                }
             }
 
             if images.isEmpty {
@@ -156,6 +174,8 @@ final class BlueprintViewModel: ObservableObject {
     // MARK: – Persist
 
     func save() {
+        guard blueprint != nil else { return }
+        relayout()
         guard let bp = blueprint else { return }
         Task {
             do {
@@ -166,6 +186,63 @@ final class BlueprintViewModel: ObservableObject {
                 await MainActor.run { self.errorMessage = error.localizedDescription }
             }
         }
+    }
+
+    // MARK: – Auto layout
+
+    /// Arranges rooms into tidy wrapping rows so they never overlap — no manual
+    /// dragging required.
+    func relayout() {
+        guard blueprint != nil else { return }
+        let padding: Double = 16
+        let maxRowWidth: Double = 360
+        var x = padding
+        var y = padding
+        var rowHeight: Double = 0
+
+        for index in blueprint!.rooms.indices {
+            let w = blueprint!.rooms[index].width
+            let h = blueprint!.rooms[index].height
+            if x > padding, x + w > maxRowWidth {
+                x = padding
+                y += rowHeight + padding
+                rowHeight = 0
+            }
+            blueprint!.rooms[index].x = x
+            blueprint!.rooms[index].y = y
+            x += w + padding
+            rowHeight = max(rowHeight, h)
+        }
+
+        let maxX = blueprint!.rooms.map { $0.x + $0.width }.max() ?? maxRowWidth
+        let maxY = blueprint!.rooms.map { $0.y + $0.height }.max() ?? 300
+        blueprint!.canvasWidth = maxX + padding
+        blueprint!.canvasHeight = maxY + padding
+    }
+
+    // MARK: – Video frames
+
+    private func extractVideoFrames(from url: URL, maxFrames: Int = 8) async -> [UIImage] {
+        let asset = AVURLAsset(url: url)
+        guard let duration = try? await asset.load(.duration) else { return [] }
+        let seconds = CMTimeGetSeconds(duration)
+        guard seconds.isFinite, seconds > 0 else { return [] }
+
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
+        generator.maximumSize = CGSize(width: 1280, height: 1280)
+
+        var frames: [UIImage] = []
+        for i in 0..<maxFrames {
+            let fraction = maxFrames <= 1 ? 0.5 : Double(i) / Double(maxFrames - 1)
+            let time = CMTime(seconds: seconds * fraction, preferredTimescale: 600)
+            if let cgImage = try? await generator.image(at: time).image {
+                frames.append(UIImage(cgImage: cgImage))
+            }
+        }
+        return frames
     }
 
     // MARK: – Placeholder when no media exists
